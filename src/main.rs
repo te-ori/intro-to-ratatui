@@ -8,7 +8,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Layout},
     style::{Modifier, Style},
-    widgets::{Block, Borders, List, ListItem, ListState, Padding},
+    widgets::{Block, Borders, List, ListItem, ListState, Padding, Paragraph},
 };
 use std::io;
 
@@ -86,7 +86,14 @@ fn main() -> io::Result<()> {
 
             // # Editor
             let editor_block = Block::default().title("Editor").borders(Borders::ALL);
-            f.render_widget(editor_block, layout[1]);
+            let editor_content = app
+                .menu_state
+                .selected()
+                .map(|index| app.notes[index].clone())
+                .unwrap_or_else(|| "Nothing selected".to_string());
+
+            let paragraph = Paragraph::new(editor_content).block(editor_block);
+            f.render_widget(paragraph, layout[1]);
         })?;
 
         // Handle Events
