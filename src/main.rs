@@ -91,14 +91,13 @@ fn main() -> io::Result<()> {
 
         // Handle Events
         if let Event::Key(key) = event::read()? {
-            if key.code == KeyCode::Char('q') {
-                break;
-            }
-
-            match key.code {
-                KeyCode::Down => app.menu_state.select_next(),
-                KeyCode::Up => app.menu_state.select_previous(),
-                _ => {}
+            if key.is_press() {
+                match key.code {
+                    KeyCode::Char('q') => break,
+                    KeyCode::Down => app.menu_state.select_next(),
+                    KeyCode::Up => app.menu_state.select_previous(),
+                    _ => {}
+                }
             }
         }
     }
