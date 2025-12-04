@@ -32,8 +32,24 @@ pub static CURRENT_SETTINGS: SomeSettings = SomeSettings {
     active_menu_item_fg: Color::Green,
 };
 
+pub struct Note {
+    title: String,
+    content: String,
+    date: String
+}
+
+impl Note {
+    pub fn new(title: String, content: String) -> Self {
+        Note {
+            title,
+            content,
+            date: "01.01.2025 18:30".to_string()
+        }
+    }
+}
+
 pub struct App {
-    notes: Vec<String>,
+    notes: Vec<Note>,
     menu_state: ListState,
     current_mode: AppMode,
 }
@@ -50,13 +66,12 @@ impl App {
     pub fn new_with_dummy() -> App {
         App {
             notes: vec![
-                "Note 1".to_string(),
-                "Note 2".to_string(),
-                "Note 3".to_string(),
-                "Note 4".to_string(),
-                "Note 5".to_string(),
-                "Note 6".to_string(),
-                "Note 7".to_string(),
+                Note::new("Note 1".to_string(), "Content of Note 1".to_string()),
+                Note::new("Note 2".to_string(), "Content of Note 2".to_string()),
+                Note::new("Note 3".to_string(), "Content of Note 3".to_string()),
+                Note::new("Note 4".to_string(), "Content of Note 4".to_string()),
+                Note::new("Note 5".to_string(), "Content of Note 5".to_string()),
+                Note::new("Note 6".to_string(), "Content of Note 6".to_string()),
             ],
             menu_state: ListState::default(),
             current_mode: AppMode::Normal,
@@ -90,7 +105,7 @@ fn main() -> io::Result<()> {
             let list_items: Vec<ListItem> = app
                 .notes
                 .iter()
-                .map(|note| ListItem::new(note.as_str()))
+                .map(|note| ListItem::new(note.title.as_str()))
                 .collect();
 
             // Creating `List` widget
@@ -126,7 +141,7 @@ fn main() -> io::Result<()> {
             let editor_content = app
                 .menu_state
                 .selected()
-                .map(|index| app.notes[index].clone())
+                .map(|index| app.notes[index].content.clone())
                 .unwrap_or_else(|| "Nothing selected".to_string());
 
             let paragraph = Paragraph::new(editor_content).block(editor_block);
@@ -153,12 +168,12 @@ fn main() -> io::Result<()> {
                             KeyCode::Esc => app.current_mode = AppMode::Normal,
                             KeyCode::Char(c) => {
                                 if let Some(index) = app.menu_state.selected() {
-                                    app.notes[index].push(c)
+                                    app.notes[index].content.push(c)
                                 }
                             }
                             KeyCode::Backspace => {
                                 if let Some(index) = app.menu_state.selected() {
-                                    _ = app.notes[index].pop()
+                                    _ = app.notes[index].content.pop()
                                 }
                             }
                             _ => {}
