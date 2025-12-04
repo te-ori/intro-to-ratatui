@@ -151,6 +151,16 @@ fn main() -> io::Result<()> {
                     if key.is_press() {
                         match key.code {
                             KeyCode::Esc => app.current_mode = AppMode::Normal,
+                            KeyCode::Char(c) => {
+                                if let Some(index) = app.menu_state.selected() {
+                                    app.notes[index].push(c)
+                                }
+                            }
+                            KeyCode::Backspace => {
+                                if let Some(index) = app.menu_state.selected() {
+                                    _ = app.notes[index].pop()
+                                }
+                            }
                             _ => {}
                         }
                     }
