@@ -6,7 +6,7 @@ use crossterm::{
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Layout},
+    layout::{Constraint, Layout, Position},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, List, ListItem, ListState, Padding, Paragraph},
 };
@@ -35,7 +35,7 @@ pub static CURRENT_SETTINGS: SomeSettings = SomeSettings {
 pub struct Note {
     title: String,
     content: String,
-    date: String
+    date: String,
 }
 
 impl Note {
@@ -43,13 +43,45 @@ impl Note {
         Note {
             title,
             content,
-            date: "01.01.2025 18:30".to_string()
+            date: "01.01.2025 18:30".to_string(),
         }
     }
 }
 
+pub struct EditorNote {
+    cursor_position: usize,
+    note: Note,
+}
+
+impl EditorNote {
+    pub fn move_cursor_next(&mut self) {
+        if self.cursor_position < self.note.content.len() {
+            self.cursor_position += 1;
+        }
+    }
+    pub fn move_cursor_previos(&mut self) {
+        if self.cursor_position > 0 {
+            self.cursor_position -= 1;
+        }
+    }
+
+    pub fn insert_char_at_current_position(&mut self, c: char) {
+        self.note.content.insert(self.cursor_position, c);
+        self.move_cursor_next();
+    }
+
+    pub fn remove_char_at_current_position(&mut self) {
+        if self.cursor_position == 0 {
+            return;
+        }
+
+        _ = self.note.content.remove(self.cursor_position - 1);
+        self.move_cursor_previos();
+    }
+}
+
 pub struct App {
-    notes: Vec<Note>,
+    notes: Vec<EditorNote>,
     menu_state: ListState,
     current_mode: AppMode,
 }
@@ -66,12 +98,30 @@ impl App {
     pub fn new_with_dummy() -> App {
         App {
             notes: vec![
-                Note::new("Note 1".to_string(), "Content of Note 1".to_string()),
-                Note::new("Note 2".to_string(), "Content of Note 2".to_string()),
-                Note::new("Note 3".to_string(), "Content of Note 3".to_string()),
-                Note::new("Note 4".to_string(), "Content of Note 4".to_string()),
-                Note::new("Note 5".to_string(), "Content of Note 5".to_string()),
-                Note::new("Note 6".to_string(), "Content of Note 6".to_string()),
+                EditorNote {
+                    cursor_position: 0,
+                    note: Note::new("Note 1".to_string(), "Content of Note 1".to_string()),
+                },
+                EditorNote {
+                    cursor_position: 0,
+                    note: Note::new("Note 2".to_string(), "Content of Note 2".to_string()),
+                },
+                EditorNote {
+                    cursor_position: 0,
+                    note: Note::new("Note 3".to_string(), "Content of Note 3".to_string()),
+                },
+                EditorNote {
+                    cursor_position: 0,
+                    note: Note::new("Note 4".to_string(), "Content of Note 4".to_string()),
+                },
+                EditorNote {
+                    cursor_position: 0,
+                    note: Note::new("Note 5".to_string(), "Content of Note 5".to_string()),
+                },
+                EditorNote {
+                    cursor_position: 0,
+                    note: Note::new("Note 6".to_string(), "Content of Note 6".to_string()),
+                },
             ],
             menu_state: ListState::default(),
             current_mode: AppMode::Normal,
@@ -105,7 +155,13 @@ fn main() -> io::Result<()> {
             let list_items: Vec<ListItem> = app
                 .notes
                 .iter()
-                .map(|note| ListItem::new(note.title.as_str()))
+                .map(|note| {
+                    ListItem::new(format!(
+                        "{} - [{}]",
+                        note.note.title.as_str(),
+                        note.cursor_position
+                    ))
+                })
                 .collect();
 
             // Creating `List` widget
@@ -141,10 +197,27 @@ fn main() -> io::Result<()> {
             let editor_content = app
                 .menu_state
                 .selected()
-                .map(|index| app.notes[index].content.clone())
+                .map(|index| app.notes[index].note.content.clone())
                 .unwrap_or_else(|| "Nothing selected".to_string());
 
+            // implement visual aid for cursor position
+
             let paragraph = Paragraph::new(editor_content).block(editor_block);
+
+            if app.current_mode == AppMode::Editing
+                && let Some(index) = app.menu_state.selected()
+            {
+                let s = &app.notes[index].note.content[0..app.notes[index].cursor_position];
+                let last_line_break_index = s.rfind('\n').map(|i| i + 1).unwrap_or(0);
+                let x = app.notes[index].cursor_position - last_line_break_index;
+                let y = s.chars().filter(|&c| c == '\n').count();
+
+                f.set_cursor_position(Position::new(
+                    layout[1].x + 1 + x as u16,
+                    layout[1].y + 1 + y as u16,
+                ));
+            }
+
             f.render_widget(paragraph, layout[1]);
         })?;
 
@@ -163,20 +236,26 @@ fn main() -> io::Result<()> {
                     }
                 }
                 AppMode::Editing => {
+                    if key.code == KeyCode::Esc {
+                        app.current_mode = AppMode::Normal;
+                        continue;
+                    }
+
                     if key.is_press() {
-                        match key.code {
-                            KeyCode::Esc => app.current_mode = AppMode::Normal,
-                            KeyCode::Char(c) => {
-                                if let Some(index) = app.menu_state.selected() {
-                                    app.notes[index].content.push(c)
+                        if let Some(index) = app.menu_state.selected() {
+                            let current_note = &mut app.notes[index];
+                            match key.code {
+                                KeyCode::Char(c) => current_note.insert_char_at_current_position(c),
+                                KeyCode::Backspace => {
+                                    current_note.remove_char_at_current_position();
                                 }
-                            }
-                            KeyCode::Backspace => {
-                                if let Some(index) = app.menu_state.selected() {
-                                    _ = app.notes[index].content.pop()
+                                KeyCode::Enter => {
+                                    current_note.insert_char_at_current_position('\n');
                                 }
+                                KeyCode::Left => current_note.move_cursor_previos(),
+                                KeyCode::Right => current_note.move_cursor_next(),
+                                _ => {}
                             }
-                            _ => {}
                         }
                     }
                 }
