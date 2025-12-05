@@ -6,7 +6,7 @@ use crossterm::{
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Layout, Position},
+    layout::{Constraint, Direction, Layout, Position},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, List, ListItem, ListState, Padding, Paragraph},
 };
@@ -144,11 +144,18 @@ fn main() -> io::Result<()> {
         // Draw the UI
         terminal.draw(|f| {
             let size = f.area();
+
+            let main_layout = Layout::new(
+                Direction::Vertical,
+                vec![Constraint::Min(0), Constraint::Length(3)],
+            )
+            .split(size);
+
             let layout = Layout::new(
                 ratatui::layout::Direction::Horizontal,
                 vec![Constraint::Percentage(20), Constraint::Percentage(80)],
             )
-            .split(size);
+            .split(main_layout[0]);
 
             // # Menu
             // ## Creating `ListItem`'s
@@ -219,6 +226,22 @@ fn main() -> io::Result<()> {
             }
 
             f.render_widget(paragraph, layout[1]);
+
+            // Footer
+            let footer_content = if let Some(index) = app.menu_state.selected() {
+                format!(
+                    "Note Count: {} | Char Count: {} | Position: {} | Date: {}",
+                    app.notes.len(),
+                    app.notes[index].note.content.len(),
+                    app.notes[index].cursor_position,
+                    app.notes[index].note.date
+                )
+            } else {
+                format!("Note Count: {}", app.notes.len())
+            };
+            let footer =
+                Paragraph::new(footer_content).block(Block::default().borders(Borders::ALL));
+            f.render_widget(footer, main_layout[1]);
         })?;
 
         // Handle Events
