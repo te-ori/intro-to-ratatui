@@ -1,7 +1,9 @@
+use crossterm::style;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Position},
     style::{Color, Modifier, Style},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Padding, Paragraph},
 };
 
@@ -13,6 +15,27 @@ pub static CURRENT_SETTINGS: SomeSettings = SomeSettings {
     default_menu_item_fg: Color::White,
     active_menu_item_fg: Color::Green,
 };
+
+fn highlight_syntax(content: &str) -> Text<'_> {
+    let new = content
+        .split('\n')
+        .map(|line| {
+            Line::from(line.split(' ').fold(Vec::new(), |mut acc, word| {
+                if !acc.is_empty() {
+                    acc.push(Span::raw(" "));
+                }
+                if word == "the" {
+                    acc.push(Span::styled("the", Style::new().fg(Color::Yellow)));
+                } else {
+                    acc.push(Span::raw(word));
+                }
+                acc
+            }))
+        })
+        .collect::<Vec<_>>();
+
+    Text::from(new)
+}
 
 pub fn render(f: &mut Frame, app: &App, menu_state: &mut ListState) {
     let size = f.area();
@@ -74,7 +97,7 @@ pub fn render(f: &mut Frame, app: &App, menu_state: &mut ListState) {
         None => "",
     };
 
-    let paragraph = Paragraph::new(editor_content).block(editor_block);
+    let paragraph = Paragraph::new(highlight_syntax(editor_content)).block(editor_block);
 
     if app.is_in_edit_mode()
         && let Some(note) = app.current_note()
