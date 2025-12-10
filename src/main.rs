@@ -1,3 +1,5 @@
+mod app;
+
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
@@ -12,11 +14,7 @@ use ratatui::{
 };
 use std::io;
 
-#[derive(PartialEq)]
-pub enum AppMode {
-    Normal,
-    Editing,
-}
+use app::*;
 
 pub struct SomeSettings {
     default_component_border_color: Color,
@@ -32,103 +30,6 @@ pub static CURRENT_SETTINGS: SomeSettings = SomeSettings {
     active_menu_item_fg: Color::Green,
 };
 
-pub struct Note {
-    title: String,
-    content: String,
-    date: String,
-}
-
-impl Note {
-    pub fn new(title: String, content: String) -> Self {
-        Note {
-            title,
-            content,
-            date: "01.01.2025 18:30".to_string(),
-        }
-    }
-}
-
-pub struct EditorNote {
-    cursor_position: usize,
-    note: Note,
-}
-
-impl EditorNote {
-    pub fn move_cursor_next(&mut self) {
-        if self.cursor_position < self.note.content.len() {
-            self.cursor_position += 1;
-        }
-    }
-    pub fn move_cursor_previos(&mut self) {
-        if self.cursor_position > 0 {
-            self.cursor_position -= 1;
-        }
-    }
-
-    pub fn insert_char_at_current_position(&mut self, c: char) {
-        self.note.content.insert(self.cursor_position, c);
-        self.move_cursor_next();
-    }
-
-    pub fn remove_char_at_current_position(&mut self) {
-        if self.cursor_position == 0 {
-            return;
-        }
-
-        _ = self.note.content.remove(self.cursor_position - 1);
-        self.move_cursor_previos();
-    }
-}
-
-pub struct App {
-    notes: Vec<EditorNote>,
-    menu_state: ListState,
-    current_mode: AppMode,
-}
-
-impl App {
-    pub fn new() -> App {
-        App {
-            notes: Vec::new(),
-            menu_state: ListState::default(),
-            current_mode: AppMode::Normal,
-        }
-    }
-
-    pub fn new_with_dummy() -> App {
-        App {
-            notes: vec![
-                EditorNote {
-                    cursor_position: 0,
-                    note: Note::new("Note 1".to_string(), "Content of Note 1".to_string()),
-                },
-                EditorNote {
-                    cursor_position: 0,
-                    note: Note::new("Note 2".to_string(), "Content of Note 2".to_string()),
-                },
-                EditorNote {
-                    cursor_position: 0,
-                    note: Note::new("Note 3".to_string(), "Content of Note 3".to_string()),
-                },
-                EditorNote {
-                    cursor_position: 0,
-                    note: Note::new("Note 4".to_string(), "Content of Note 4".to_string()),
-                },
-                EditorNote {
-                    cursor_position: 0,
-                    note: Note::new("Note 5".to_string(), "Content of Note 5".to_string()),
-                },
-                EditorNote {
-                    cursor_position: 0,
-                    note: Note::new("Note 6".to_string(), "Content of Note 6".to_string()),
-                },
-            ],
-            menu_state: ListState::default(),
-            current_mode: AppMode::Normal,
-        }
-    }
-}
-
 fn main() -> io::Result<()> {
     // 1. Startup: Enable raw mode and enter alternate screen
     enable_raw_mode()?;
@@ -138,11 +39,20 @@ fn main() -> io::Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new_with_dummy();
-
+    let mut menu_state = ListState::default();
     // 2. Main Loop
     loop {
         // Draw the UI
         terminal.draw(|f| {
+            match menu_state.selected() {
+                Some(index) => {
+                    app.set_current_note_index(index).unwrap();
+                }
+                None => {
+                    app.reset_current_node_index();
+                }
+            }
+
             let size = f.area();
 
             let main_layout = Layout::new(
@@ -160,25 +70,18 @@ fn main() -> io::Result<()> {
             // # Menu
             // ## Creating `ListItem`'s
             let list_items: Vec<ListItem> = app
-                .notes
-                .iter()
-                .map(|note| {
-                    ListItem::new(format!(
-                        "{} - [{}]",
-                        note.note.title.as_str(),
-                        note.cursor_position
-                    ))
-                })
+                .titles()
+                .map(|title| ListItem::new(format!("{}", title)))
                 .collect();
 
             // Creating `List` widget
-            let menu_border_color = if app.current_mode == AppMode::Normal {
+            let menu_border_color = if app.is_in_normal_mode() {
                 CURRENT_SETTINGS.active_component_border_color
             } else {
                 CURRENT_SETTINGS.default_component_border_color
             };
             let menu_block = Block::default()
-                .title(format!("Notes [{}]", app.notes.len()))
+                .title(format!("Notes [{}]", app.notes_count()))
                 .padding(Padding::new(1, 1, 1, 1))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(menu_border_color));
@@ -189,10 +92,10 @@ fn main() -> io::Result<()> {
                     .add_modifier(Modifier::BOLD),
             );
 
-            f.render_stateful_widget(list, layout[0], &mut app.menu_state);
+            f.render_stateful_widget(list, layout[0], &mut menu_state);
 
             // # Editor
-            let editor_border_color = if app.current_mode == AppMode::Editing {
+            let editor_border_color = if app.is_in_edit_mode() {
                 CURRENT_SETTINGS.active_component_border_color
             } else {
                 CURRENT_SETTINGS.default_component_border_color
@@ -201,22 +104,26 @@ fn main() -> io::Result<()> {
                 .title("Editor")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(editor_border_color));
-            let editor_content = app
-                .menu_state
-                .selected()
-                .map(|index| app.notes[index].note.content.clone())
-                .unwrap_or_else(|| "Nothing selected".to_string());
+            // let editor_content = app
+            //     .menu_state
+            //     .selected()
+            //     .map(|index| app.notes[index].note.content.clone())
+            //     .unwrap_or_else(|| "Nothing selected".to_string());
+            let editor_content = match app.current_note() {
+                Some(note) => note.content(),
+                None => "",
+            };
 
             // implement visual aid for cursor position
 
             let paragraph = Paragraph::new(editor_content).block(editor_block);
 
-            if app.current_mode == AppMode::Editing
-                && let Some(index) = app.menu_state.selected()
+            if app.is_in_edit_mode()
+                && let Some(note) = app.current_note()
             {
-                let s = &app.notes[index].note.content[0..app.notes[index].cursor_position];
+                let s = &note.content()[0..note.cursor_position()];
                 let last_line_break_index = s.rfind('\n').map(|i| i + 1).unwrap_or(0);
-                let x = app.notes[index].cursor_position - last_line_break_index;
+                let x = note.cursor_position() - last_line_break_index;
                 let y = s.chars().filter(|&c| c == '\n').count();
 
                 f.set_cursor_position(Position::new(
@@ -228,16 +135,16 @@ fn main() -> io::Result<()> {
             f.render_widget(paragraph, layout[1]);
 
             // Footer
-            let footer_content = if let Some(index) = app.menu_state.selected() {
+            let footer_content = if let Some(note) = app.current_note() {
                 format!(
                     "Note Count: {} | Char Count: {} | Position: {} | Date: {}",
-                    app.notes.len(),
-                    app.notes[index].note.content.len(),
-                    app.notes[index].cursor_position,
-                    app.notes[index].note.date
+                    app.notes_count(),
+                    note.content().len(),
+                    note.cursor_position(),
+                    note.date()
                 )
             } else {
-                format!("Note Count: {}", app.notes.len())
+                format!("Note Count: {}", app.notes_count())
             };
             let footer =
                 Paragraph::new(footer_content).block(Block::default().borders(Borders::ALL));
@@ -246,37 +153,36 @@ fn main() -> io::Result<()> {
 
         // Handle Events
         if let Event::Key(key) = event::read()? {
-            match app.current_mode {
+            match app.mode() {
                 AppMode::Normal => {
                     if key.is_press() {
                         match key.code {
                             KeyCode::Char('q') => break,
-                            KeyCode::Down => app.menu_state.select_next(),
-                            KeyCode::Up => app.menu_state.select_previous(),
-                            KeyCode::Enter => app.current_mode = AppMode::Editing,
+                            KeyCode::Down => menu_state.select_next(),
+                            KeyCode::Up => menu_state.select_previous(),
+                            KeyCode::Enter => app.set_to_editing(),
                             _ => {}
                         }
                     }
                 }
                 AppMode::Editing => {
                     if key.code == KeyCode::Esc {
-                        app.current_mode = AppMode::Normal;
+                        app.set_to_normal();
                         continue;
                     }
 
                     if key.is_press() {
-                        if let Some(index) = app.menu_state.selected() {
-                            let current_note = &mut app.notes[index];
+                        if let Some(note) = app.current_note_mut() {
                             match key.code {
-                                KeyCode::Char(c) => current_note.insert_char_at_current_position(c),
+                                KeyCode::Char(c) => note.insert_char_at_current_position(c),
                                 KeyCode::Backspace => {
-                                    current_note.remove_char_at_current_position();
+                                    note.remove_char_at_current_position();
                                 }
                                 KeyCode::Enter => {
-                                    current_note.insert_char_at_current_position('\n');
+                                    note.insert_char_at_current_position('\n');
                                 }
-                                KeyCode::Left => current_note.move_cursor_previos(),
-                                KeyCode::Right => current_note.move_cursor_next(),
+                                KeyCode::Left => note.move_cursor_previos(),
+                                KeyCode::Right => note.move_cursor_next(),
                                 _ => {}
                             }
                         }
