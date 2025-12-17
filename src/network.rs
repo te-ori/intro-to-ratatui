@@ -1,65 +1,105 @@
-use crate::collaboration;
-
-use tokio;
-
 pub mod server {
-    use tokio::io::AsyncReadExt;
+    // use std::fmt::Error;
 
-    use crate::collaboration::{self, SetCursorPosition};
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
+    };
 
-    pub async fn start(sender: tokio::sync::mpsc::UnboundedSender<collaboration::Command>) {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:6666")
-            .await
-            .unwrap();
+    use crate::collaboration::{self, Command, SetCursorPosition};
 
-        let (mut socket, _) = listener.accept().await.unwrap();
-        let mut read_buf = vec![0u8; 4096];
+    pub struct Server {
+        tx: UnboundedSender<Command>,
+        rx: UnboundedReceiver<Command>,
+    }
 
-        loop {
-            match socket.read(&mut read_buf).await {
-                Ok(0) => break, // Connection closed
-                Ok(n) => {
-                    let s = String::from_utf8_lossy(&read_buf[0..n]);
-                    let trimmed = s.trim();
-                    if trimmed.is_empty() {
-                        continue;
-                    }
+    impl Server {
+        pub fn new() -> Self {
+            let (tx, rx) = unbounded_channel::<Command>();
 
-                    // println!("Received: {}", trimmed);
+            Server { tx, rx }
+        }
 
-                    let parts: Vec<&str> = trimmed.split(':').collect();
-                    if parts.len() != 2 {
-                        eprintln!("Invalid format. Expected 'index:pos', got: '{}'", trimmed);
-                        continue;
-                    }
+        pub fn get_sender(&self) -> UnboundedSender<Command> {
+            self.tx.clone()
+        }
 
-                    let message_index = match parts[0].parse::<usize>() {
-                        Ok(v) => v,
-                        Err(e) => {
-                            eprintln!("Parse error for index: {}", e);
-                            continue;
-                        }
-                    };
+        pub async fn start(mut self, sender: UnboundedSender<Command>) -> Result<(), String> {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:6666")
+                .await
+                .unwrap();
 
-                    let pos = match parts[1].parse::<usize>() {
-                        Ok(v) => v,
-                        Err(e) => {
-                            eprintln!("Parse error for pos: {}", e);
-                            continue;
-                        }
-                    };
-                    // println!("SENDİNG");
-                    if let Err(e) = sender.send(collaboration::Command::SetCursorPosition(
-                        SetCursorPosition { message_index, pos },
-                    )) {
-                        eprintln!("Error sending command: {}", e);
-                    }
+            let (socket, _) = listener.accept().await.unwrap();
+            let (mut reader, mut writer) = socket.into_split();
+            let mut rx = self.rx;
+            let tx = self.tx;
+
+            tokio::spawn(async move {
+                while let Some(Command::Info(msg)) = rx.recv().await {
+                    let _ = writer.write_all(msg.as_bytes()).await;
                 }
-                Err(e) => {
-                    eprintln!("Socket error: {}", e);
-                    break;
+            });
+
+            let mut read_buf = vec![0u8; 4096];
+
+            loop {
+                match reader.read(&mut read_buf).await {
+                    Ok(0) => return Err("Connection closed".to_string()), // Connection closed
+                    Ok(n) => {
+                        let response = format!("'{}' byte read.", n);
+                        let _ = tx.send(Command::Info(response));
+
+                        let s = String::from_utf8_lossy(&read_buf[0..n]);
+                        let trimmed = s.trim();
+                        if trimmed.is_empty() {
+                            continue;
+                        }
+
+                        // println!("Received: {}", trimmed);
+
+                        let parts: Vec<&str> = trimmed.split(':').collect();
+                        if parts.len() != 2 {
+                            eprintln!("Invalid format. Expected 'index:pos', got: '{}'", trimmed);
+                            continue;
+                        }
+
+                        let message_index = match parts[0].parse::<usize>() {
+                            Ok(v) => v,
+                            Err(e) => {
+                                eprintln!("Parse error for index: {}", e);
+                                continue;
+                            }
+                        };
+
+                        let pos = match parts[1].parse::<usize>() {
+                            Ok(v) => v,
+                            Err(e) => {
+                                eprintln!("Parse error for pos: {}", e);
+                                continue;
+                            }
+                        };
+                        // println!("SENDİNG");
+                        return match sender.send(collaboration::Command::SetCursorPosition(
+                            SetCursorPosition {
+                                note_id: message_index,
+                                pos,
+                            },
+                        )) {
+                            Ok(_) => Ok(()),
+                            Err(_) => Err("()".to_string()),
+                        };
+                    }
+                    Err(e) => {
+                        return Err(format!("Socket error: {}", e));
+                    }
                 }
             }
         }
     }
+}
+
+pub mod client {
+    use crate::collaboration;
+
+    pub async fn start(receiver: tokio::sync::mpsc::UnboundedReceiver<collaboration::Command>) {}
 }

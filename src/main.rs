@@ -34,8 +34,11 @@ async fn main() -> io::Result<()> {
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<collaboration::Command>();
     let txx = tx.clone();
+
+    let mut srv = network::server::Server::new();
+    let tx_server = srv.get_sender();
     tokio::spawn(async move {
-        network::server::start(txx).await;
+        srv.start(txx).await;
     });
 
     let (ktx, mut krx) = tokio::sync::mpsc::unbounded_channel::<Event>();
@@ -65,6 +68,10 @@ async fn main() -> io::Result<()> {
             ui::render(f, &app, &mut menu_state);
         })?;
 
+        _ = tx_server.send(collaboration::Command::Info(
+            "Somethings happend".to_string(),
+        ));
+
         tokio::select! {
             command = rx.recv() => {
                 match command {
@@ -74,10 +81,14 @@ async fn main() -> io::Result<()> {
                         match cmd {
                             collaboration::Command::SetCursorPosition(set_cursor_position) => {
                                 app.set_collaborator_position(
-                                    set_cursor_position.message_index,
+                                    set_cursor_position.note_id,
                                     set_cursor_position.pos,
                                 );
                             }
+                            collaboration::Command::InsertString(_) => {
+                                // TODO: Implement string insertion from collaborator
+                            }
+                            collaboration::Command::Info(str) => {}
                         }
                     }
                     None => {}
