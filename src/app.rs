@@ -156,6 +156,13 @@ impl App {
 
         Some(&self.notes[self.current_node_index.unwrap()])
     }
+    pub fn current_note_id(&self) -> Option<usize> {
+        if self.current_node_index.is_none() {
+            return None;
+        }
+
+        Some(self.current_node_index.unwrap())
+    }
 
     pub fn titles(&self) -> impl Iterator<Item = &String> {
         self.notes.iter().map(|n| &n.note.title)

@@ -9,9 +9,12 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{Terminal, backend::CrosstermBackend, style::Color, widgets::ListState};
-use std::{io, process::Command, thread};
+use std::{env, io, thread};
+use tokio::sync::mpsc::UnboundedSender;
 
 use app::*;
+
+use crate::collaboration::{Command, SetCursorPosition};
 
 pub struct SomeSettings {
     default_component_border_color: Color,
@@ -22,6 +25,15 @@ pub struct SomeSettings {
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
+    let args: Vec<String> = env::args().collect();
+    let network_mode = if args.len() < 2 || args[1] == "server" {
+        "server".to_string()
+    } else if args[1] == "client" {
+        "client".to_string()
+    } else {
+        panic!("undefined network mode")
+    };
+
     // 1. Startup: Enable raw mode and enter alternate screen
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -32,14 +44,24 @@ async fn main() -> io::Result<()> {
     let mut app = App::new_with_dummy();
     let mut menu_state = ListState::default();
 
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<collaboration::Command>();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Command>();
     let txx = tx.clone();
 
-    let mut srv = network::server::Server::new();
-    let tx_server = srv.get_sender();
-    tokio::spawn(async move {
-        srv.start(txx).await;
-    });
+    let tx_messenger: UnboundedSender<Command>;
+
+    if network_mode == "server" {
+        let srv = network::server::Server::new();
+        tx_messenger = srv.get_sender();
+        tokio::spawn(async move {
+            _ = srv.start(txx).await;
+        });
+    } else {
+        let client = network::client::Client::new();
+        tx_messenger = client.get_sender();
+        tokio::spawn(async move {
+            _ = client.start(txx).await;
+        });
+    }
 
     let (ktx, mut krx) = tokio::sync::mpsc::unbounded_channel::<Event>();
     let kxx = ktx.clone();
@@ -68,9 +90,9 @@ async fn main() -> io::Result<()> {
             ui::render(f, &app, &mut menu_state);
         })?;
 
-        _ = tx_server.send(collaboration::Command::Info(
-            "Somethings happend".to_string(),
-        ));
+        // _ = tx_messenger.send(collaboration::Command::Info(
+        //     "Somethings happend".to_string(),
+        // ));
 
         tokio::select! {
             command = rx.recv() => {
@@ -115,6 +137,7 @@ async fn main() -> io::Result<()> {
                             }
 
                             if key.is_press() {
+                                let note_id = app.current_note_id();
                                 if let Some(note) = app.current_note_mut() {
                                     match key.code {
                                         KeyCode::Char(c) => note.insert_char_at_current_position(c),
@@ -128,6 +151,14 @@ async fn main() -> io::Result<()> {
                                         KeyCode::Right => note.move_cursor_next(),
                                         _ => {}
                                     }
+                                    let note_id = note_id.unwrap();
+
+                                    // println!("note id: {}, pos: {}", note_id,note.cursor_position());
+
+                                    _ = tx_messenger.send(Command::SetCursorPosition(SetCursorPosition {
+                                        note_id ,
+                                        pos : note.cursor_position()
+                                    } ));
                                 }
                             }
                         }
