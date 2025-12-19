@@ -57,7 +57,7 @@ impl EditorNote {
         &self.note.content
     }
 
-    pub fn title(&self) -> &str {
+    pub fn _title(&self) -> &str {
         &self.note.title
     }
 
@@ -81,7 +81,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> App {
+    pub fn _new() -> App {
         App {
             notes: Vec::new(),
             current_node_index: None,

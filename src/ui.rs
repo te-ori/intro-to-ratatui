@@ -1,4 +1,3 @@
-use crossterm::style;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Position},

@@ -1,5 +1,6 @@
 mod app;
 mod collaboration;
+mod messenger;
 mod network;
 mod ui;
 
@@ -10,11 +11,10 @@ use crossterm::{
 };
 use ratatui::{Terminal, backend::CrosstermBackend, style::Color, widgets::ListState};
 use std::{env, io, thread};
-use tokio::sync::mpsc::UnboundedSender;
 
 use app::*;
 
-use crate::collaboration::{Command, SetCursorPosition};
+use crate::{collaboration::Command, messenger::Mode};
 
 pub struct SomeSettings {
     default_component_border_color: Color,
@@ -27,9 +27,9 @@ pub struct SomeSettings {
 async fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
     let network_mode = if args.len() < 2 || args[1] == "server" {
-        "server".to_string()
+        Mode::Server
     } else if args[1] == "client" {
-        "client".to_string()
+        Mode::Client
     } else {
         panic!("undefined network mode")
     };
@@ -47,21 +47,7 @@ async fn main() -> io::Result<()> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Command>();
     let txx = tx.clone();
 
-    let tx_messenger: UnboundedSender<Command>;
-
-    if network_mode == "server" {
-        let srv = network::server::Server::new();
-        tx_messenger = srv.get_sender();
-        tokio::spawn(async move {
-            _ = srv.start(txx).await;
-        });
-    } else {
-        let client = network::client::Client::new();
-        tx_messenger = client.get_sender();
-        tokio::spawn(async move {
-            _ = client.start(txx).await;
-        });
-    }
+    let mut msngr = messenger::Messenger::new(network_mode);
 
     let (ktx, mut krx) = tokio::sync::mpsc::unbounded_channel::<Event>();
     let kxx = ktx.clone();
@@ -74,6 +60,9 @@ async fn main() -> io::Result<()> {
             }
         }
     });
+
+    let listener = msngr.spawn_listener(txx);
+    tokio::spawn(async move { listener.start().await });
 
     // 2. Main Loop
     loop {
@@ -89,10 +78,6 @@ async fn main() -> io::Result<()> {
 
             ui::render(f, &app, &mut menu_state);
         })?;
-
-        // _ = tx_messenger.send(collaboration::Command::Info(
-        //     "Somethings happend".to_string(),
-        // ));
 
         tokio::select! {
             command = rx.recv() => {
@@ -110,7 +95,7 @@ async fn main() -> io::Result<()> {
                             collaboration::Command::InsertString(_) => {
                                 // TODO: Implement string insertion from collaborator
                             }
-                            collaboration::Command::Info(str) => {}
+                            collaboration::Command::Info(_) => {}
                         }
                     }
                     None => {}
@@ -152,13 +137,7 @@ async fn main() -> io::Result<()> {
                                         _ => {}
                                     }
                                     let note_id = note_id.unwrap();
-
-                                    // println!("note id: {}, pos: {}", note_id,note.cursor_position());
-
-                                    _ = tx_messenger.send(Command::SetCursorPosition(SetCursorPosition {
-                                        note_id ,
-                                        pos : note.cursor_position()
-                                    } ));
+                                    msngr.send_cursor_position_command(note_id, note.cursor_position());
                                 }
                             }
                         }
