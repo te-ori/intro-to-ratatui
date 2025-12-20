@@ -22,6 +22,7 @@ impl Note {
 
 pub struct EditorNote {
     cursor_position: usize,
+    collaborator_position: usize,
     note: Note,
 }
 
@@ -56,7 +57,7 @@ impl EditorNote {
         &self.note.content
     }
 
-    pub fn title(&self) -> &str {
+    pub fn _title(&self) -> &str {
         &self.note.title
     }
 
@@ -67,6 +68,10 @@ impl EditorNote {
     pub fn cursor_position(&self) -> usize {
         self.cursor_position
     }
+
+    pub fn collaborator_position(&self) -> usize {
+        self.collaborator_position
+    }
 }
 
 pub struct App {
@@ -76,7 +81,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> App {
+    pub fn _new() -> App {
         App {
             notes: Vec::new(),
             current_node_index: None,
@@ -90,26 +95,32 @@ impl App {
                 EditorNote {
                     cursor_position: 0,
                     note: Note::new("Note 1".to_string(), "Content of Note 1".to_string()),
+                    collaborator_position: 0,
                 },
                 EditorNote {
                     cursor_position: 0,
                     note: Note::new("Note 2".to_string(), "Content of Note 2".to_string()),
+                    collaborator_position: 0,
                 },
                 EditorNote {
                     cursor_position: 0,
                     note: Note::new("Note 3".to_string(), "Content of Note 3".to_string()),
+                    collaborator_position: 0,
                 },
                 EditorNote {
                     cursor_position: 0,
                     note: Note::new("Note 4".to_string(), "Content of Note 4".to_string()),
+                    collaborator_position: 0,
                 },
                 EditorNote {
                     cursor_position: 0,
                     note: Note::new("Note 5".to_string(), "Content of Note 5".to_string()),
+                    collaborator_position: 0,
                 },
                 EditorNote {
                     cursor_position: 0,
                     note: Note::new("Note 6".to_string(), "Content of Note 6".to_string()),
+                    collaborator_position: 0,
                 },
             ],
             current_node_index: None,
@@ -145,6 +156,13 @@ impl App {
 
         Some(&self.notes[self.current_node_index.unwrap()])
     }
+    pub fn current_note_id(&self) -> Option<usize> {
+        if self.current_node_index.is_none() {
+            return None;
+        }
+
+        Some(self.current_node_index.unwrap())
+    }
 
     pub fn titles(&self) -> impl Iterator<Item = &String> {
         self.notes.iter().map(|n| &n.note.title)
@@ -172,5 +190,9 @@ impl App {
 
     pub fn is_in_edit_mode(&self) -> bool {
         self.current_mode == AppMode::Editing
+    }
+
+    pub fn set_collaborator_position(&mut self, note_index: usize, pos: usize) {
+        self.notes[note_index].collaborator_position = pos;
     }
 }

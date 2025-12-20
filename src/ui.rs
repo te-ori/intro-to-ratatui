@@ -1,4 +1,3 @@
-use crossterm::style;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Position},
@@ -67,7 +66,7 @@ pub fn render(f: &mut Frame, app: &App, menu_state: &mut ListState) {
     };
     let menu_block = Block::default()
         .title(format!("Notes [{}]", app.notes_count()))
-        .padding(Padding::new(1, 1, 1, 1))
+        .padding(Padding::new(1, 1, 0, 1))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(menu_border_color));
 
@@ -118,10 +117,11 @@ pub fn render(f: &mut Frame, app: &App, menu_state: &mut ListState) {
     // Footer
     let footer_content = if let Some(note) = app.current_note() {
         format!(
-            "Note Count: {} | Char Count: {} | Position: {} | Date: {}",
+            "Note Count: {} | Char Count: {} | Position: {} | Collaborator Position: {} | Date: {}",
             app.notes_count(),
             note.content().len(),
             note.cursor_position(),
+            note.collaborator_position(),
             note.date()
         )
     } else {
